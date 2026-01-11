@@ -7,3 +7,4 @@ streamlit-folium
 folium
 sqlalchemy
 python-dotenv
+streamlit-js-eval
