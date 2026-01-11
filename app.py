@@ -73,15 +73,11 @@ st.title("📍 Radar Zonasi Sekolah — Analisis Sentimen")
 
 # ================= RADIUS CONTROL =================
 st.subheader("🎯 Pengaturan Radius Zonasi")
-
 radius_on = st.toggle("Aktifkan Radius", value=True)
 
 radius = st.slider(
     "Radius (meter)",
-    min_value=100,
-    max_value=5000,
-    value=1000,
-    step=100,
+    100, 5000, 1000, 100,
     disabled=not radius_on
 )
 
@@ -101,14 +97,12 @@ with col1:
 
     m = folium.Map(location=center, zoom_start=zoom)
 
-    # Statistik sentimen
     stats = {}
     if not fb.empty:
         g = fb.groupby("sekolah").agg({"pos_pct":"mean","id":"count"}).reset_index()
         for _, r in g.iterrows():
             stats[r["sekolah"]] = r
 
-    # Marker user + radius
     if gps_ready:
         folium.Marker(
             [user_lat, user_lon],
@@ -118,22 +112,19 @@ with col1:
 
         if radius_on:
             folium.Circle(
-                location=[user_lat, user_lon],
+                [user_lat, user_lon],
                 radius=radius,
                 color="blue",
                 fill=True,
                 fill_opacity=0.08
             ).add_to(m)
 
-    # Marker sekolah
     for _, r in sekolah_df.iterrows():
-        nama = r["nama"]
-
         if gps_ready and radius_on:
-            jarak = haversine(user_lat, user_lon, float(r["lat"]), float(r["lon"]))
-            if jarak > radius:
+            if haversine(user_lat, user_lon, r["lat"], r["lon"]) > radius:
                 continue
 
+        nama = r["nama"]
         if nama in stats:
             avg = stats[nama]["pos_pct"]
             cnt = stats[nama]["id"]
@@ -155,15 +146,13 @@ with col1:
     map_data = st_folium(m, width=700, height=600)
     st.session_state["map_data"] = map_data
 
-# ================= MAP → SELECTBOX + AUTO ZOOM =================
+# ================= MAP → SELECTBOX SYNC =================
 if map_data and map_data.get("last_object_clicked"):
     latc = map_data["last_object_clicked"]["lat"]
     lonc = map_data["last_object_clicked"]["lng"]
 
     tmp = sekolah_df.copy()
-    tmp["dist"] = tmp.apply(
-        lambda r: haversine(latc, lonc, float(r["lat"]), float(r["lon"])), axis=1
-    )
+    tmp["dist"] = tmp.apply(lambda r: haversine(latc, lonc, r["lat"], r["lon"]), axis=1)
     nearest = tmp.sort_values("dist").iloc[0]
 
     if st.session_state["selected_school"] != nearest["nama"]:
@@ -176,7 +165,7 @@ with st.sidebar:
     st.header("Kontrol")
 
     sekolah_list = sekolah_df["nama"].tolist()
-    if st.session_state["selected_school"] is None and sekolah_list:
+    if st.session_state["selected_school"] is None:
         st.session_state["selected_school"] = sekolah_list[0]
 
     selected_school = st.selectbox(
@@ -185,6 +174,14 @@ with st.sidebar:
         index=sekolah_list.index(st.session_state["selected_school"]),
         key="selected_school"
     )
+
+    # 🔥 AUTO ZOOM SAAT PILIH DARI SEARCH / SELECTBOX
+    row = sekolah_df[sekolah_df["nama"] == selected_school]
+    if not row.empty:
+        lat, lon = float(row.iloc[0]["lat"]), float(row.iloc[0]["lon"])
+        if st.session_state["zoom_center"] != [lat, lon]:
+            st.session_state["zoom_center"] = [lat, lon]
+            st.rerun()
 
     st.markdown("### 📡 Status GPS")
     if gps_ready:
@@ -228,16 +225,8 @@ with col2:
     st.markdown("---")
     st.subheader("📥 Export CSV")
     if st.button("Download CSV Ulasan"):
-        if fb.empty:
-            st.warning("Belum ada data.")
-        else:
-            csv = fb.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                "⬇️ Download CSV",
-                csv,
-                "ulasan_sekolah.csv",
-                "text/csv"
-            )
+        csv = fb.to_csv(index=False).encode("utf-8")
+        st.download_button("⬇️ Download CSV", csv, "ulasan_sekolah.csv", "text/csv")
 
     st.markdown("---")
     st.write("gusti mandala")
