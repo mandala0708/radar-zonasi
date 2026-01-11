@@ -57,6 +57,9 @@ if "map_data" not in st.session_state:
 if "selected_school" not in st.session_state:
     st.session_state["selected_school"] = None
 
+if "zoom_center" not in st.session_state:
+    st.session_state["zoom_center"] = None
+
 # ---------- Haversine ----------
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371000
@@ -68,14 +71,18 @@ def haversine(lat1, lon1, lat2, lon2):
 # ================= UI =================
 st.title("📍 Radar Zonasi Sekolah — Analisis Sentimen")
 
-# 🔹 RADIUS (DITAMBAHKAN – TIDAK TERIKAT GPS)
+# ================= RADIUS CONTROL =================
 st.subheader("🎯 Pengaturan Radius Zonasi")
+
+radius_on = st.toggle("Aktifkan Radius", value=True)
+
 radius = st.slider(
     "Radius (meter)",
     min_value=100,
     max_value=5000,
     value=1000,
-    step=100
+    step=100,
+    disabled=not radius_on
 )
 
 sekolah_df = load_sekolah_df()
@@ -85,8 +92,14 @@ fb = load_feedback_df()
 col1, col2 = st.columns([2,1])
 
 with col1:
-    center = [user_lat, user_lon] if gps_ready else [-6.2, 106.8]
-    m = folium.Map(location=center, zoom_start=12)
+    if st.session_state["zoom_center"]:
+        center = st.session_state["zoom_center"]
+        zoom = 15
+    else:
+        center = [user_lat, user_lon] if gps_ready else [-6.2, 106.8]
+        zoom = 12
+
+    m = folium.Map(location=center, zoom_start=zoom)
 
     # Statistik sentimen
     stats = {}
@@ -103,19 +116,20 @@ with col1:
             icon=folium.Icon(color="blue", icon="user")
         ).add_to(m)
 
-        folium.Circle(
-            location=[user_lat, user_lon],
-            radius=radius,
-            color="blue",
-            fill=True,
-            fill_opacity=0.08
-        ).add_to(m)
+        if radius_on:
+            folium.Circle(
+                location=[user_lat, user_lon],
+                radius=radius,
+                color="blue",
+                fill=True,
+                fill_opacity=0.08
+            ).add_to(m)
 
-    # Marker sekolah (NAMA SELALU TAMPIL)
+    # Marker sekolah
     for _, r in sekolah_df.iterrows():
         nama = r["nama"]
 
-        if gps_ready:
+        if gps_ready and radius_on:
             jarak = haversine(user_lat, user_lon, float(r["lat"]), float(r["lon"]))
             if jarak > radius:
                 continue
@@ -130,7 +144,7 @@ with col1:
             color = "gray"
 
         folium.CircleMarker(
-            location=[r["lat"], r["lon"]],
+            [r["lat"], r["lon"]],
             radius=8,
             color=color,
             fill=True,
@@ -141,7 +155,7 @@ with col1:
     map_data = st_folium(m, width=700, height=600)
     st.session_state["map_data"] = map_data
 
-# ================= MAP → SELECTBOX SYNC =================
+# ================= MAP → SELECTBOX + AUTO ZOOM =================
 if map_data and map_data.get("last_object_clicked"):
     latc = map_data["last_object_clicked"]["lat"]
     lonc = map_data["last_object_clicked"]["lng"]
@@ -150,10 +164,11 @@ if map_data and map_data.get("last_object_clicked"):
     tmp["dist"] = tmp.apply(
         lambda r: haversine(latc, lonc, float(r["lat"]), float(r["lon"])), axis=1
     )
-    nearest = tmp.sort_values("dist").iloc[0]["nama"]
+    nearest = tmp.sort_values("dist").iloc[0]
 
-    if st.session_state["selected_school"] != nearest:
-        st.session_state["selected_school"] = nearest
+    if st.session_state["selected_school"] != nearest["nama"]:
+        st.session_state["selected_school"] = nearest["nama"]
+        st.session_state["zoom_center"] = [nearest["lat"], nearest["lon"]]
         st.rerun()
 
 # ================= SIDEBAR =================
