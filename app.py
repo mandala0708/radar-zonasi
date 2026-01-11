@@ -31,7 +31,6 @@ div.stButton>button:hover{background:#45a049}
 
 # ================== GPS OTOMATIS ==================
 geo = get_geolocation()
-
 if geo:
     user_lat = geo["coords"]["latitude"]
     user_lon = geo["coords"]["longitude"]
@@ -55,6 +54,9 @@ if "db_initialized" not in st.session_state:
 if "map_data" not in st.session_state:
     st.session_state["map_data"] = None
 
+if "selected_school" not in st.session_state:
+    st.session_state["selected_school"] = None
+
 # ---------- Haversine ----------
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371000
@@ -63,41 +65,86 @@ def haversine(lat1, lon1, lat2, lon2):
     a = sin(dlat/2)**2 + cos(radians(lat1))*cos(radians(lat2))*sin(dlon/2)**2
     return R * (2 * atan2(sqrt(a), sqrt(1-a)))
 
-def get_nearest_school(df, lat, lon, max_distance):
-    if lat == 0.0 or lon == 0.0:
-        return None, None
-    df2 = df.copy()
-    df2["distance_m"] = df2.apply(
-        lambda r: haversine(lat, lon, float(r["lat"]), float(r["lon"])), axis=1
-    )
-    df2 = df2.sort_values("distance_m")
-    n = df2.iloc[0]
-    if n["distance_m"] > max_distance:
-        return None, None
-    return n["nama"], n["distance_m"]
-
 # ================= UI =================
 st.title("📍 Radar Zonasi Sekolah — Analisis Sentimen")
 
-# ---------- Sidebar ----------
+sekolah_df = load_sekolah_df()
+fb = load_feedback_df()
+
+# ================= MAP =================
+col1, col2 = st.columns([2,1])
+
+with col1:
+    center = [user_lat, user_lon] if gps_ready else [-6.2, 106.8]
+    m = folium.Map(location=center, zoom_start=12)
+
+    # Statistik sentimen
+    stats = {}
+    if not fb.empty:
+        g = fb.groupby("sekolah").agg({"pos_pct":"mean","id":"count"}).reset_index()
+        for _, r in g.iterrows():
+            stats[r["sekolah"]] = r
+
+    # Marker user
+    if gps_ready:
+        folium.Marker(
+            [user_lat, user_lon],
+            tooltip="📍 Lokasi Anda",
+            icon=folium.Icon(color="blue", icon="user")
+        ).add_to(m)
+
+    # Marker sekolah (NAMA SELALU TAMPIL)
+    for _, r in sekolah_df.iterrows():
+        nama = r["nama"]
+
+        if nama in stats:
+            avg = stats[nama]["pos_pct"]
+            cnt = stats[nama]["id"]
+            popup = f"<b>{nama}</b><br>Sentimen: {avg:.1f}%<br>Ulasan: {cnt}"
+            color = "green" if avg >= 70 else "orange" if avg >= 40 else "red"
+        else:
+            popup = f"<b>{nama}</b><br>Belum ada ulasan"
+            color = "gray"
+
+        folium.CircleMarker(
+            location=[r["lat"], r["lon"]],
+            radius=8,
+            color=color,
+            fill=True,
+            popup=popup,
+            tooltip=folium.Tooltip(nama, permanent=True, direction="top")
+        ).add_to(m)
+
+    map_data = st_folium(m, width=700, height=600)
+    st.session_state["map_data"] = map_data
+
+# ================= MAP → SELECTBOX SYNC =================
+if map_data and map_data.get("last_object_clicked"):
+    latc = map_data["last_object_clicked"]["lat"]
+    lonc = map_data["last_object_clicked"]["lng"]
+
+    tmp = sekolah_df.copy()
+    tmp["dist"] = tmp.apply(
+        lambda r: haversine(latc, lonc, float(r["lat"]), float(r["lon"])), axis=1
+    )
+    nearest = tmp.sort_values("dist").iloc[0]["nama"]
+
+    if st.session_state["selected_school"] != nearest:
+        st.session_state["selected_school"] = nearest
+        st.experimental_rerun()
+
+# ================= SIDEBAR =================
 with st.sidebar:
     st.header("Kontrol")
 
-    sekolah_df = load_sekolah_df()
     sekolah_list = sekolah_df["nama"].tolist()
-    default_school = sekolah_list[0] if sekolah_list else None
-
-    if st.session_state["map_data"] and st.session_state["map_data"].get("last_object_clicked"):
-        latc = st.session_state["map_data"]["last_object_clicked"]["lat"]
-        lonc = st.session_state["map_data"]["last_object_clicked"]["lng"]
-        tmp = sekolah_df.copy()
-        tmp["dist"] = ((tmp["lat"]-latc)**2 + (tmp["lon"]-lonc)**2)**0.5
-        default_school = tmp.sort_values("dist").iloc[0]["nama"]
+    if st.session_state["selected_school"] is None and sekolah_list:
+        st.session_state["selected_school"] = sekolah_list[0]
 
     selected_school = st.selectbox(
-        "Pilih sekolah",
+        "Pilih / Cari sekolah",
         sekolah_list,
-        index=sekolah_list.index(default_school) if default_school else 0,
+        index=sekolah_list.index(st.session_state["selected_school"]),
         key="selected_school"
     )
 
@@ -105,74 +152,9 @@ with st.sidebar:
     if gps_ready:
         st.success(f"🟢 GPS AKTIF\n\nLat: {user_lat:.6f}\nLon: {user_lon:.6f}")
     else:
-        st.warning("🔴 GPS TIDAK AKTIF\nIzinkan lokasi di browser")
+        st.warning("🔴 GPS TIDAK AKTIF")
 
-    radius = st.slider("Radius (meter)", 100, 5000, 1000)
-
-    name, dist = get_nearest_school(sekolah_df, user_lat, user_lon, radius)
-    if name:
-        st.success(f"Sekolah terdekat: {name} ({dist:.0f} m)")
-
-# ---------- Data ----------
-fb = load_feedback_df()
-
-# ---------- Layout ----------
-col1, col2 = st.columns([2,1])
-
-# ---------- Helper ----------
-def sentiment_color(avg):
-    if avg >= 70: return "green"
-    if avg >= 40: return "orange"
-    return "red"
-
-# ---------- Map ----------
-with col1:
-    center = [user_lat, user_lon] if gps_ready else [-6.2, 106.8]
-    m = folium.Map(location=center, zoom_start=12)
-
-    stats = {}
-    if not fb.empty:
-        g = fb.groupby("sekolah").agg({"pos_pct":"mean","id":"count"}).reset_index()
-        for _, r in g.iterrows():
-            stats[r["sekolah"]] = r
-
-    if gps_ready:
-        folium.Marker(
-            [user_lat, user_lon],
-            tooltip="📍 Lokasi Anda",
-            icon=folium.Icon(color="blue", icon="user")
-        ).add_to(m)
-        folium.Circle(
-            [user_lat, user_lon],
-            radius=radius,
-            color="blue",
-            fill=True,
-            fill_opacity=0.08
-        ).add_to(m)
-
-    for _, r in sekolah_df.iterrows():
-        nama = r["nama"]
-        if nama in stats:
-            avg = stats[nama]["pos_pct"]
-            cnt = stats[nama]["id"]
-            popup = f"<b>{nama}</b><br>Sentimen: {avg:.1f}%<br>Ulasan: {cnt}"
-            color = sentiment_color(avg)
-        else:
-            popup = f"<b>{nama}</b><br>Belum ada ulasan"
-            color = "gray"
-
-        folium.CircleMarker(
-            [r["lat"], r["lon"]],
-            radius=8,
-            popup=popup,
-            tooltip=nama,
-            color=color,
-            fill=True
-        ).add_to(m)
-
-    st.session_state["map_data"] = st_folium(m, width=700, height=600)
-
-# ---------- Panel ----------
+# ================= PANEL ULASAN =================
 with col2:
     st.subheader("Panel Sekolah & Ulasan")
     st.markdown(f"**Sekolah terpilih:** {selected_school}")
@@ -184,7 +166,7 @@ with col2:
 
     if st.button("Analisis & Simpan"):
         if time.time() - st.session_state["last_comment_time"] < 10:
-            st.warning("Tunggu beberapa detik sebelum mengirim lagi.")
+            st.warning("Tunggu beberapa detik.")
         elif not opini.strip():
             st.warning("Opini kosong.")
         else:
@@ -198,7 +180,7 @@ with col2:
                 st.warning("Kalimat negatif terdeteksi. Saran: " + corrected)
 
     if st.button("Tampilkan Ulasan Terbaru"):
-        df_sel = fb[fb["sekolah"]==selected_school]
+        df_sel = fb[fb["sekolah"] == selected_school]
         if df_sel.empty:
             st.info("Belum ada ulasan.")
         else:
