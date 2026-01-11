@@ -1,0 +1,9 @@
+streamlit>=1.24
+pandas
+nltk
+textblob
+vaderSentiment
+streamlit-folium
+folium
+sqlalchemy
+python-dotenv
