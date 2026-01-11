@@ -68,6 +68,16 @@ def haversine(lat1, lon1, lat2, lon2):
 # ================= UI =================
 st.title("📍 Radar Zonasi Sekolah — Analisis Sentimen")
 
+# 🔹 RADIUS (DITAMBAHKAN – TIDAK TERIKAT GPS)
+st.subheader("🎯 Pengaturan Radius Zonasi")
+radius = st.slider(
+    "Radius (meter)",
+    min_value=100,
+    max_value=5000,
+    value=1000,
+    step=100
+)
+
 sekolah_df = load_sekolah_df()
 fb = load_feedback_df()
 
@@ -85,7 +95,7 @@ with col1:
         for _, r in g.iterrows():
             stats[r["sekolah"]] = r
 
-    # Marker user
+    # Marker user + radius
     if gps_ready:
         folium.Marker(
             [user_lat, user_lon],
@@ -93,9 +103,22 @@ with col1:
             icon=folium.Icon(color="blue", icon="user")
         ).add_to(m)
 
+        folium.Circle(
+            location=[user_lat, user_lon],
+            radius=radius,
+            color="blue",
+            fill=True,
+            fill_opacity=0.08
+        ).add_to(m)
+
     # Marker sekolah (NAMA SELALU TAMPIL)
     for _, r in sekolah_df.iterrows():
         nama = r["nama"]
+
+        if gps_ready:
+            jarak = haversine(user_lat, user_lon, float(r["lat"]), float(r["lon"]))
+            if jarak > radius:
+                continue
 
         if nama in stats:
             avg = stats[nama]["pos_pct"]
@@ -203,4 +226,3 @@ with col2:
 
     st.markdown("---")
     st.write("gusti mandala")
-
