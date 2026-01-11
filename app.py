@@ -131,7 +131,7 @@ if map_data and map_data.get("last_object_clicked"):
 
     if st.session_state["selected_school"] != nearest:
         st.session_state["selected_school"] = nearest
-        st.experimental_rerun()
+        st.rerun()
 
 # ================= SIDEBAR =================
 with st.sidebar:
@@ -203,3 +203,4 @@ with col2:
 
     st.markdown("---")
     st.write("gusti mandala")
+
