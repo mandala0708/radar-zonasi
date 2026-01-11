@@ -15,6 +15,7 @@ from db import (
 )
 from streamlit_folium import st_folium
 import folium
+from folium.plugins import Fullscreen, MeasureControl
 
 # ---------- Page config ----------
 st.set_page_config(page_title="Radar Zonasi Sentimen — Streamlit", layout="wide")
@@ -96,6 +97,21 @@ with col1:
         zoom = 12
 
     m = folium.Map(location=center, zoom_start=zoom)
+
+    # 🔥 FOLIUM PLUGINS: FULLSCREEN & MEASURE & LAYER CONTROL
+    Fullscreen(
+        position="topright",
+        title="Fullscreen",
+        title_cancel="Exit Fullscreen",
+        force_separate_button=True
+    ).add_to(m)
+
+    MeasureControl(
+        position="bottomleft",
+        primary_length_unit="meters"
+    ).add_to(m)
+
+    folium.LayerControl(position="topright").add_to(m)
 
     stats = {}
     if not fb.empty:
