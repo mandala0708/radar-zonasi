@@ -80,12 +80,9 @@ with st.sidebar:
     else:
         st.warning("🔴 GPS TIDAK AKTIF\nGunakan input manual")
 
-    st.markdown("---")
-    lat_manual = st.number_input("Latitude Manual", value=0.0)
-    lon_manual = st.number_input("Longitude Manual", value=0.0)
+    lat = user_lat
+    lon = user_lon
 
-    lat = user_lat if gps_ready else lat_manual
-    lon = user_lon if gps_ready else lon_manual
 
     radius = st.slider("Radius (meter)", 100, 5000, 1000)
 
@@ -142,3 +139,4 @@ with col2:
             st.warning("Opini kosong")
 
 st.write("gusti mandala")
+
