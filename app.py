@@ -62,41 +62,72 @@ def haversine(lat1, lon1, lat2, lon2):
 # ================= UI =================
 st.title("📍 Radar Zonasi Sekolah — Analisis Sentimen")
 
-# ================= GPS / Manual Input =================
-geo = get_geolocation()
-if geo:
-    gps_lat = geo["coords"]["latitude"]
-    gps_lon = geo["coords"]["longitude"]
-    gps_ready = True
-else:
-    gps_lat = None
-    gps_lon = None
-    gps_ready = False
-
-st.subheader("📌 Lokasi Anda")
-st.markdown("Jika GPS tidak akurat, Anda bisa masukkan koordinat manual:")
-manual_lat = st.number_input("Latitude (manual fallback)", value=gps_lat if gps_lat else 0.0, format="%.7f")
-manual_lon = st.number_input("Longitude (manual fallback)", value=gps_lon if gps_lon else 0.0, format="%.7f")
-
-# Pilih koordinat yang digunakan
-if gps_ready and gps_lat is not None and gps_lon is not None:
-    user_lat, user_lon = gps_lat, gps_lon
-else:
-    user_lat, user_lon = manual_lat, manual_lon
-
-# ================= RADIUS CONTROL =================
-st.subheader("🎯 Pengaturan Radius Zonasi")
-radius_on = st.toggle("Aktifkan Radius", value=True)
-
-radius = st.slider(
-    "Radius (meter)",
-    100, 10000, 10000, 100,
-    disabled=not radius_on
-)
-
 # ================= LOAD DATA =================
 sekolah_df = load_sekolah_df()
 fb = load_feedback_df()
+
+# ================= SIDEBAR KIRI =================
+with st.sidebar:
+    st.header("Kontrol Lokasi & Radius")
+
+    # GPS / manual fallback
+    geo = get_geolocation()
+    if geo:
+        gps_lat = geo["coords"]["latitude"]
+        gps_lon = geo["coords"]["longitude"]
+        gps_ready = True
+    else:
+        gps_lat = None
+        gps_lon = None
+        gps_ready = False
+
+    st.subheader("📌 Lokasi Anda")
+    st.markdown("Jika GPS tidak akurat, Anda bisa masukkan koordinat manual:")
+
+    manual_lat = st.number_input("Latitude (manual fallback)", value=gps_lat if gps_lat else 0.0, format="%.7f")
+    manual_lon = st.number_input("Longitude (manual fallback)", value=gps_lon if gps_lon else 0.0, format="%.7f")
+
+    # Pilih koordinat yang digunakan
+    if gps_ready and gps_lat is not None and gps_lon is not None:
+        user_lat, user_lon = gps_lat, gps_lon
+    else:
+        user_lat, user_lon = manual_lat, manual_lon
+
+    # Radius
+    st.subheader("🎯 Pengaturan Radius Zonasi")
+    radius_on = st.toggle("Aktifkan Radius", value=True)
+    radius = st.slider(
+        "Radius (meter)",
+        100, 10000, 10000, 100,
+        disabled=not radius_on
+    )
+
+    # Pilih sekolah
+    st.header("Pilih Sekolah")
+    sekolah_list = sekolah_df["nama"].tolist()
+    if st.session_state["selected_school"] is None:
+        st.session_state["selected_school"] = sekolah_list[0]
+
+    selected_school = st.selectbox(
+        "Pilih / Cari sekolah",
+        sekolah_list,
+        index=sekolah_list.index(st.session_state["selected_school"]),
+        key="selected_school"
+    )
+
+    # Auto zoom
+    row = sekolah_df[sekolah_df["nama"] == selected_school]
+    if not row.empty:
+        lat, lon = float(row.iloc[0]["lat"]), float(row.iloc[0]["lon"])
+        if st.session_state["zoom_center"] != [lat, lon]:
+            st.session_state["zoom_center"] = [lat, lon]
+            st.rerun()
+
+    st.markdown("### 📡 Status GPS")
+    if gps_ready:
+        st.success(f"🟢 GPS AKTIF\n\nLat: {user_lat:.6f}\nLon: {user_lon:.6f}")
+    else:
+        st.warning("🔴 GPS TIDAK AKTIF (gunakan input manual)")
 
 # ================= MAP =================
 col1, col2 = st.columns([2,1])
@@ -191,34 +222,6 @@ if map_data and map_data.get("last_object_clicked"):
         st.session_state["zoom_center"] = [nearest["lat"], nearest["lon"]]
         st.rerun()
 
-# ================= SIDEBAR =================
-with st.sidebar:
-    st.header("Kontrol")
-    sekolah_list = sekolah_df["nama"].tolist()
-    if st.session_state["selected_school"] is None:
-        st.session_state["selected_school"] = sekolah_list[0]
-
-    selected_school = st.selectbox(
-        "Pilih / Cari sekolah",
-        sekolah_list,
-        index=sekolah_list.index(st.session_state["selected_school"]),
-        key="selected_school"
-    )
-
-    # Auto zoom
-    row = sekolah_df[sekolah_df["nama"] == selected_school]
-    if not row.empty:
-        lat, lon = float(row.iloc[0]["lat"]), float(row.iloc[0]["lon"])
-        if st.session_state["zoom_center"] != [lat, lon]:
-            st.session_state["zoom_center"] = [lat, lon]
-            st.rerun()
-
-    st.markdown("### 📡 Status GPS")
-    if gps_ready:
-        st.success(f"🟢 GPS AKTIF\n\nLat: {user_lat:.6f}\nLon: {user_lon:.6f}")
-    else:
-        st.warning("🔴 GPS TIDAK AKTIF (gunakan input manual)")
-
 # ================= PANEL ULASAN =================
 with col2:
     st.subheader("Panel Sekolah & Ulasan")
@@ -255,7 +258,6 @@ with col2:
     st.markdown("---")
     st.subheader("📥 Export CSV")
     if st.button("Download CSV Ulasan"):
-        # Filter feedback sekolah terpilih
         df_export = fb[fb["sekolah"] == selected_school]
         if df_export.empty:
             st.warning("Belum ada data ulasan untuk sekolah ini.")
