@@ -219,9 +219,12 @@ if map_data and map_data.get("last_object_clicked"):
         nearest = tmp.sort_values("dist").iloc[0]
         nearest_name = nearest.get("nama", None)
         if nearest_name and st.session_state.get("selected_school") != nearest_name:
-            st.session_state["selected_school"] = nearest_name
-            st.session_state["zoom_center"] = [nearest["lat"], nearest["lon"]]
-            st.experimental_rerun()
+            try:
+                st.session_state["selected_school"] = nearest_name
+                st.session_state["zoom_center"] = [nearest["lat"], nearest["lon"]]
+                st.experimental_rerun()
+            except st.errors.StreamlitAPIException:
+                pass
 
 # ================= PANEL ULASAN =================
 with col2:
