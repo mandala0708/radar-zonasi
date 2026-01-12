@@ -208,19 +208,20 @@ with col1:
     map_data = st_folium(m, width=700, height=600)
     st.session_state["map_data"] = map_data
 
-# ================= MAP → SELECTBOX SYNC =================
+# ================= MAP → SELECTBOX SYNC (Safe) =================
 if map_data and map_data.get("last_object_clicked"):
-    latc = map_data["last_object_clicked"]["lat"]
-    lonc = map_data["last_object_clicked"]["lng"]
+    latc = map_data["last_object_clicked"].get("lat")
+    lonc = map_data["last_object_clicked"].get("lng")
 
-    tmp = sekolah_df.copy()
-    tmp["dist"] = tmp.apply(lambda r: haversine(latc, lonc, r["lat"], r["lon"]), axis=1)
-    nearest = tmp.sort_values("dist").iloc[0]
-
-    if st.session_state["selected_school"] != nearest["nama"]:
-        st.session_state["selected_school"] = nearest["nama"]
-        st.session_state["zoom_center"] = [nearest["lat"], nearest["lon"]]
-        st.rerun()
+    if latc is not None and lonc is not None:
+        tmp = sekolah_df.copy()
+        tmp["dist"] = tmp.apply(lambda r: haversine(latc, lonc, r["lat"], r["lon"]), axis=1)
+        nearest = tmp.sort_values("dist").iloc[0]
+        nearest_name = nearest.get("nama", None)
+        if nearest_name and st.session_state.get("selected_school") != nearest_name:
+            st.session_state["selected_school"] = nearest_name
+            st.session_state["zoom_center"] = [nearest["lat"], nearest["lon"]]
+            st.experimental_rerun()
 
 # ================= PANEL ULASAN =================
 with col2:
