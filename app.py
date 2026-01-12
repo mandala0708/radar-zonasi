@@ -208,7 +208,7 @@ with col1:
     map_data = st_folium(m, width=700, height=600)
     st.session_state["map_data"] = map_data
 
-# ================= MAP → SELECTBOX SYNC (Safe) =================
+# ================= MAP → SELECTBOX SYNC (Klik Marker Aktif) =================
 if map_data and map_data.get("last_object_clicked"):
     latc = map_data["last_object_clicked"].get("lat")
     lonc = map_data["last_object_clicked"].get("lng")
