@@ -77,7 +77,7 @@ radius_on = st.toggle("Aktifkan Radius", value=True)
 
 radius = st.slider(
     "Radius (meter)",
-    100, 5000, 1000, 100,
+    100, 10000, 1000, 100,
     disabled=not radius_on
 )
 
@@ -230,3 +230,4 @@ with col2:
 
     st.markdown("---")
     st.write("gusti mandala")
+
