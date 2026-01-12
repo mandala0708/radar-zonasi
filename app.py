@@ -15,7 +15,7 @@ from db import (
 )
 from streamlit_folium import st_folium
 import folium
-from folium.plugins import Fullscreen, MeasureControl, FloatImage
+from folium.plugins import Fullscreen, MeasureControl
 
 # ---------- Page config ----------
 st.set_page_config(page_title="Radar Zonasi Sentimen — Streamlit", layout="wide")
@@ -30,7 +30,19 @@ div.stButton>button:hover{background:#45a049}
 </style>
 """, unsafe_allow_html=True)
 
-# ---------- Setup NLTK & DB ----------
+# ================== GPS OTOMATIS ==================
+geo = get_geolocation()
+if geo:
+    user_lat = geo["coords"]["latitude"]
+    user_lon = geo["coords"]["longitude"]
+    gps_ready = True
+else:
+    user_lat = 0.0
+    user_lon = 0.0
+    gps_ready = False
+# ==================================================
+
+# ---------- Setup ----------
 if "nltk_ready" not in st.session_state:
     nltk.download("vader_lexicon", quiet=True)
     st.session_state["nltk_ready"] = True
@@ -57,57 +69,48 @@ def haversine(lat1, lon1, lat2, lon2):
     a = sin(dlat/2)**2 + cos(radians(lat1))*cos(radians(lat2))*sin(dlon/2)**2
     return R * (2 * atan2(sqrt(a), sqrt(1-a)))
 
-# ================== GPS ==================
-geo = get_geolocation()
-if geo:
-    user_lat = geo["coords"]["latitude"]
-    user_lon = geo["coords"]["longitude"]
-    gps_ready = True
-else:
-    user_lat = 0.0
-    user_lon = 0.0
-    gps_ready = False
-
 # ================= UI =================
 st.title("Radar Zonasi Sekolah mandala — Analisis Sentimen")
+
+# ================= RADIUS CONTROL =================
+st.subheader("Radius Zonasi")
+radius_on = st.toggle("Aktifkan Radius", value=True)
+
+radius = st.slider(
+    "Radius (meter)",
+    100, 10000, 1000, 100,
+    disabled=not radius_on
+)
 
 sekolah_df = load_sekolah_df()
 fb = load_feedback_df()
 
-# ================= LAYOUT =================
-col1, col2 = st.columns([3,1])  # Map lebih luas
-
-with col2:
-    st.subheader("Kontrol Zonasi & Radius")
-    radius_on = st.toggle("Aktifkan Radius", value=True)
-    radius = st.slider("Radius (meter)", 100, 10000, 1000, 100, disabled=not radius_on)
-
-    st.header("Pilih Sekolah")
-    sekolah_list = sekolah_df["nama"].tolist()
-    if st.session_state["selected_school"] is None:
-        st.session_state["selected_school"] = sekolah_list[0]
-
-    selected_school = st.selectbox(
-        "Cari / Pilih sekolah",
-        sekolah_list,
-        index=sekolah_list.index(st.session_state["selected_school"]),
-        key="selected_school"
-    )
-
-    st.markdown("### 📡 Status GPS")
-    if gps_ready:
-        st.success(f"🟢 GPS AKTIF\nLat: {user_lat:.6f}\nLon: {user_lon:.6f}")
-    else:
-        st.warning("🔴 GPS TIDAK AKTIF")
-
 # ================= MAP =================
+col1, col2 = st.columns([2,1])
+
 with col1:
-    center = st.session_state["zoom_center"] if st.session_state["zoom_center"] else ([user_lat, user_lon] if gps_ready else [-6.2,106.8])
-    zoom = 15 if st.session_state["zoom_center"] else 12
+    if st.session_state["zoom_center"]:
+        center = st.session_state["zoom_center"]
+        zoom = 15
+    else:
+        center = [user_lat, user_lon] if gps_ready else [-6.2, 106.8]
+        zoom = 12
+
     m = folium.Map(location=center, zoom_start=zoom)
 
-    Fullscreen(position="topright", title="Fullscreen", title_cancel="Exit Fullscreen", force_separate_button=True).add_to(m)
-    MeasureControl(position="bottomleft", primary_length_unit="meters").add_to(m)
+    # 🔥 FOLIUM PLUGINS: FULLSCREEN & MEASURE & LAYER CONTROL
+    Fullscreen(
+        position="topright",
+        title="Fullscreen",
+        title_cancel="Exit Fullscreen",
+        force_separate_button=True
+    ).add_to(m)
+
+    MeasureControl(
+        position="bottomleft",
+        primary_length_unit="meters"
+    ).add_to(m)
+
     folium.LayerControl(position="topright").add_to(m)
 
     stats = {}
@@ -117,23 +120,35 @@ with col1:
             stats[r["sekolah"]] = r
 
     if gps_ready:
-        folium.Marker([user_lat, user_lon], tooltip="📍 Lokasi Anda", icon=folium.Icon(color="blue", icon="user")).add_to(m)
-        if radius_on:
-            folium.Circle([user_lat,user_lon], radius=radius, color="blue", fill=True, fill_opacity=0.08).add_to(m)
+        folium.Marker(
+            [user_lat, user_lon],
+            tooltip="📍 Lokasi Anda",
+            icon=folium.Icon(color="blue", icon="user")
+        ).add_to(m)
 
-    # MARKERS SEKOLAH
+        if radius_on:
+            folium.Circle(
+                [user_lat, user_lon],
+                radius=radius,
+                color="blue",
+                fill=True,
+                fill_opacity=0.08
+            ).add_to(m)
+
     for _, r in sekolah_df.iterrows():
-        if gps_ready and radius_on and haversine(user_lat, user_lon, r["lat"], r["lon"]) > radius:
-            continue
+        if gps_ready and radius_on:
+            if haversine(user_lat, user_lon, r["lat"], r["lon"]) > radius:
+                continue
+
         nama = r["nama"]
         if nama in stats:
             avg = stats[nama]["pos_pct"]
             cnt = stats[nama]["id"]
-            color = "green" if avg>=70 else "orange" if avg>=40 else "red"
             popup = f"<b>{nama}</b><br>Sentimen: {avg:.1f}%<br>Ulasan: {cnt}"
+            color = "green" if avg >= 70 else "orange" if avg >= 40 else "red"
         else:
-            color = "gray"
             popup = f"<b>{nama}</b><br>Belum ada ulasan"
+            color = "gray"
 
         folium.CircleMarker(
             [r["lat"], r["lon"]],
@@ -144,11 +159,10 @@ with col1:
             tooltip=folium.Tooltip(nama, permanent=True, direction="top")
         ).add_to(m)
 
-    # RENDER MAP
     map_data = st_folium(m, width=700, height=600)
     st.session_state["map_data"] = map_data
 
-# ================= SMOOTH ZOOM ON CLICK =================
+# ================= MAP → SELECTBOX SYNC =================
 if map_data and map_data.get("last_object_clicked"):
     latc = map_data["last_object_clicked"]["lat"]
     lonc = map_data["last_object_clicked"]["lng"]
@@ -160,8 +174,36 @@ if map_data and map_data.get("last_object_clicked"):
     if st.session_state["selected_school"] != nearest["nama"]:
         st.session_state["selected_school"] = nearest["nama"]
         st.session_state["zoom_center"] = [nearest["lat"], nearest["lon"]]
-        # Smooth zoom: gunakan javascript flyTo
-        st.session_state["fly_to"] = [nearest["lat"], nearest["lon"]]
+        st.rerun()
+
+# ================= SIDEBAR =================
+with st.sidebar:
+    st.header("Kontrol")
+
+    sekolah_list = sekolah_df["nama"].tolist()
+    if st.session_state["selected_school"] is None:
+        st.session_state["selected_school"] = sekolah_list[0]
+
+    selected_school = st.selectbox(
+        "Pilih / Cari sekolah",
+        sekolah_list,
+        index=sekolah_list.index(st.session_state["selected_school"]),
+        key="selected_school"
+    )
+
+    # 🔥 AUTO ZOOM SAAT PILIH DARI SEARCH / SELECTBOX
+    row = sekolah_df[sekolah_df["nama"] == selected_school]
+    if not row.empty:
+        lat, lon = float(row.iloc[0]["lat"]), float(row.iloc[0]["lon"])
+        if st.session_state["zoom_center"] != [lat, lon]:
+            st.session_state["zoom_center"] = [lat, lon]
+            st.rerun()
+
+    st.markdown("### 📡 Status GPS")
+    if gps_ready:
+        st.success(f"🟢 GPS AKTIF\n\nLat: {user_lat:.6f}\nLon: {user_lon:.6f}")
+    else:
+        st.warning("🔴 GPS TIDAK AKTIF")
 
 # ================= PANEL ULASAN =================
 with col2:
@@ -185,11 +227,11 @@ with col2:
             save_feedback(sid, opini, pos, vader)
             st.session_state["last_comment_time"] = time.time()
             st.success("Opini tersimpan.")
-            if found or vader<0:
-                st.warning("Kalimat negatif terdeteksi. Saran: "+corrected)
+            if found or vader < 0:
+                st.warning("Kalimat negatif terdeteksi. Saran: " + corrected)
 
     if st.button("Tampilkan Ulasan Terbaru"):
-        df_sel = fb[fb["sekolah"]==selected_school]
+        df_sel = fb[fb["sekolah"] == selected_school]
         if df_sel.empty:
             st.info("Belum ada ulasan.")
         else:
@@ -204,3 +246,5 @@ with col2:
 
     st.markdown("---")
     st.write("gusti mandala")
+
+
