@@ -72,16 +72,6 @@ def haversine(lat1, lon1, lat2, lon2):
 # ================= UI =================
 st.title("Radar Zonasi Sekolah mandala — Analisis Sentimen")
 
-# ================= RADIUS CONTROL =================
-st.subheader("Radius Zonasi")
-radius_on = st.toggle("Aktifkan Radius", value=True)
-
-radius = st.slider(
-    "Radius (meter)",
-    100, 10000, 1000, 100,
-    disabled=not radius_on
-)
-
 sekolah_df = load_sekolah_df()
 fb = load_feedback_df()
 
@@ -126,18 +116,9 @@ with col1:
             icon=folium.Icon(color="blue", icon="user")
         ).add_to(m)
 
-        if radius_on:
-            folium.Circle(
-                [user_lat, user_lon],
-                radius=radius,
-                color="blue",
-                fill=True,
-                fill_opacity=0.08
-            ).add_to(m)
-
     for _, r in sekolah_df.iterrows():
-        if gps_ready and radius_on:
-            if haversine(user_lat, user_lon, r["lat"], r["lon"]) > radius:
+        if gps_ready and st.session_state.get("radius_on", True):
+            if haversine(user_lat, user_lon, r["lat"], r["lon"]) > st.session_state.get("radius", 1000):
                 continue
 
         nama = r["nama"]
@@ -157,6 +138,16 @@ with col1:
             fill=True,
             popup=popup,
             tooltip=folium.Tooltip(nama, permanent=True, direction="top")
+        ).add_to(m)
+
+    # radius circle
+    if gps_ready and st.session_state.get("radius_on", True):
+        folium.Circle(
+            [user_lat, user_lon],
+            radius=st.session_state.get("radius", 1000),
+            color="blue",
+            fill=True,
+            fill_opacity=0.08
         ).add_to(m)
 
     map_data = st_folium(m, width=700, height=600)
@@ -205,6 +196,15 @@ with st.sidebar:
     else:
         st.warning("🔴 GPS TIDAK AKTIF")
 
+    # ---------- RADIUS ZONASI DI BAWAH GPS ----------
+    st.subheader("Radius Zonasi")
+    st.session_state["radius_on"] = st.toggle("Aktifkan Radius", value=True)
+    st.session_state["radius"] = st.slider(
+        "Radius (meter)",
+        100, 10000, 1000, 100,
+        disabled=not st.session_state["radius_on"]
+    )
+
 # ================= PANEL ULASAN =================
 with col2:
     st.subheader("Panel Sekolah & Ulasan")
@@ -246,5 +246,3 @@ with col2:
 
     st.markdown("---")
     st.write("gusti mandala")
-
-
