@@ -70,15 +70,15 @@ def haversine(lat1, lon1, lat2, lon2):
     return R * (2 * atan2(sqrt(a), sqrt(1-a)))
 
 # ================= UI =================
-st.title("📍 Radar Zonasi Sekolah — Analisis Sentimen")
+st.title("Radar Zonasi Sekolah mandala — Analisis Sentimen")
 
 # ================= RADIUS CONTROL =================
-st.subheader("🎯 Pengaturan Radius Zonasi")
+st.subheader("Radius Zonasi")
 radius_on = st.toggle("Aktifkan Radius", value=True)
 
 radius = st.slider(
     "Radius (meter)",
-    100, 5000, 1000, 100,
+    100, 10000, 1000, 100,
     disabled=not radius_on
 )
 
@@ -246,3 +246,4 @@ with col2:
 
     st.markdown("---")
     st.write("gusti mandala")
+
