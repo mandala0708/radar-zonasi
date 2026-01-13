@@ -30,7 +30,7 @@ div.stButton>button:hover{background:#45a049}
 </style>
 """, unsafe_allow_html=True)
 
-# ================== GPS OTOMATIS ==================
+# ================== GPS ==================
 geo = get_geolocation()
 user_lat = geo["coords"]["latitude"] if geo else -6.2
 user_lon = geo["coords"]["longitude"] if geo else 106.8
