@@ -35,7 +35,6 @@ geo = get_geolocation()
 user_lat = geo["coords"]["latitude"] if geo else -6.2
 user_lon = geo["coords"]["longitude"] if geo else 106.8
 gps_ready = geo is not None
-# ==================================================
 
 # ---------- Setup ----------
 if "nltk_ready" not in st.session_state:
@@ -57,6 +56,8 @@ if "radius_on" not in st.session_state:
     st.session_state["radius_on"] = True
 if "radius" not in st.session_state:
     st.session_state["radius"] = 1000
+if "last_comment_time" not in st.session_state:
+    st.session_state["last_comment_time"] = 0
 
 # ---------- Haversine ----------
 def haversine(lat1, lon1, lat2, lon2):
@@ -82,18 +83,15 @@ with col1:
     MeasureControl(position="bottomleft", primary_length_unit="meters").add_to(m)
     folium.LayerControl(position="topright").add_to(m)
 
-    # Statistik sentimen
     stats = {}
     if not fb.empty:
         g = fb.groupby("sekolah").agg({"pos_pct":"mean","id":"count"}).reset_index()
         for _, r in g.iterrows():
             stats[r["sekolah"]] = r
 
-    # Marker user
     if gps_ready:
         folium.Marker([user_lat, user_lon], tooltip="📍 Lokasi Anda", icon=folium.Icon(color="blue", icon="user")).add_to(m)
 
-    # Marker sekolah
     nearest_distance = None
     for _, r in sekolah_df.iterrows():
         dist = haversine(user_lat, user_lon, r["lat"], r["lon"]) if gps_ready and st.session_state["radius_on"] else None
@@ -113,8 +111,8 @@ with col1:
         highlight = dist is not None and (nearest_distance is None or dist < nearest_distance)
         if highlight:
             nearest_distance = dist
-            st.session_state["selected_school_temp"] = nama
-            st.session_state["zoom_center_temp"] = [r["lat"], r["lon"]]
+            st.session_state["selected_school"] = nama
+            st.session_state["zoom_center"] = [r["lat"], r["lon"]]
 
         folium.CircleMarker(
             [r["lat"], r["lon"]],
@@ -126,7 +124,6 @@ with col1:
             tooltip=folium.Tooltip(nama, permanent=True, direction="top")
         ).add_to(m)
 
-    # Circle radius
     if gps_ready and st.session_state["radius_on"]:
         folium.Circle([user_lat, user_lon], radius=st.session_state["radius"], color="blue", fill=True, fill_opacity=0.08).add_to(m)
 
@@ -139,18 +136,18 @@ with st.sidebar:
     if st.session_state["selected_school"] is None:
         st.session_state["selected_school"] = sekolah_list[0]
 
+    def on_select_school():
+        row = sekolah_df[sekolah_df["nama"] == st.session_state["selected_school"]]
+        if not row.empty:
+            st.session_state["zoom_center"] = [float(row.iloc[0]["lat"]), float(row.iloc[0]["lon"])]
+
     selected_school = st.selectbox(
         "Pilih / Cari sekolah",
         sekolah_list,
         index=sekolah_list.index(st.session_state["selected_school"]),
-        key="selected_school"
+        key="selected_school",
+        on_change=on_select_school
     )
-
-    # Auto zoom ke sekolah
-    row = sekolah_df[sekolah_df["nama"] == selected_school]
-    if not row.empty:
-        lat, lon = float(row.iloc[0]["lat"]), float(row.iloc[0]["lon"])
-        st.session_state["zoom_center"] = [lat, lon]
 
     st.markdown("### 📡 Status GPS")
     if gps_ready:
@@ -165,11 +162,7 @@ with st.sidebar:
 # ================= PANEL ULASAN =================
 with col2:
     st.subheader("Panel Sekolah & Ulasan")
-    selected_school = st.session_state["selected_school_temp"] or st.session_state["selected_school"]
-    st.markdown(f"**Sekolah terpilih:** {selected_school}")
-
-    if "last_comment_time" not in st.session_state:
-        st.session_state["last_comment_time"] = 0
+    st.markdown(f"**Sekolah terpilih:** {st.session_state['selected_school']}")
 
     opini = st.text_area("Tulis opini / ulasan")
 
@@ -181,7 +174,7 @@ with col2:
         else:
             pos, vader = detect_sentiment(opini)
             found, corrected = correct_negative_sentence(opini)
-            sid = get_sekolah_id_by_nama(selected_school)
+            sid = get_sekolah_id_by_nama(st.session_state["selected_school"])
             save_feedback(sid, opini, pos, vader)
             st.session_state["last_comment_time"] = time.time()
             st.success("Opini tersimpan.")
@@ -189,7 +182,7 @@ with col2:
                 st.warning("Kalimat negatif terdeteksi. Saran: " + corrected)
 
     if st.button("Tampilkan Ulasan Terbaru"):
-        df_sel = fb[fb["sekolah"] == selected_school]
+        df_sel = fb[fb["sekolah"] == st.session_state["selected_school"]]
         if df_sel.empty:
             st.info("Belum ada ulasan.")
         else:
@@ -198,10 +191,11 @@ with col2:
 
     st.markdown("---")
     st.subheader("📥 Export CSV")
-    df_export = fb[fb["sekolah"] == selected_school]
+    df_export = fb[fb["sekolah"] == st.session_state["selected_school"]]
     if not df_export.empty:
         csv = df_export.to_csv(index=False).encode("utf-8")
-        st.download_button(f"⬇️ Download CSV {selected_school}", csv, f"ulasan_{selected_school}.csv", "text/csv")
+        st.download_button(f"⬇️ Download CSV {st.session_state['selected_school']}", csv,
+                           f"ulasan_{st.session_state['selected_school']}.csv", "text/csv")
     else:
         st.warning("Belum ada data ulasan untuk sekolah ini.")
 
