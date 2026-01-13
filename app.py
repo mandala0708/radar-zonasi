@@ -48,6 +48,9 @@ if "selected_school" not in st.session_state:
 if "zoom_center" not in st.session_state:
     st.session_state["zoom_center"] = None
 
+if "last_comment_time" not in st.session_state:
+    st.session_state["last_comment_time"] = 0
+
 # ---------- Haversine ----------
 def haversine(lat1, lon1, lat2, lon2):
     R = 6371000
@@ -153,7 +156,7 @@ with col1:
     nearest_distance = None
     for _, r in sekolah_df.iterrows():
         # Filter berdasarkan radius
-        if user_lat and user_lon and radius_on:
+        if radius_on:
             dist = haversine(user_lat, user_lon, r["lat"], r["lon"])
             if dist > radius:
                 continue
@@ -194,32 +197,21 @@ if map_data and map_data.get("last_object_clicked"):
     latc = map_data["last_object_clicked"]["lat"]
     lonc = map_data["last_object_clicked"]["lng"]
 
-    # Cari sekolah terdekat
     tmp = sekolah_df.copy()
     tmp["dist"] = tmp.apply(lambda r: haversine(latc, lonc, r["lat"], r["lon"]), axis=1)
     nearest = tmp.sort_values("dist").iloc[0]
     nearest_school = nearest["nama"]
     nearest_latlon = [nearest["lat"], nearest["lon"]]
 
-    # Hanya update session_state jika berbeda
+    # Update state tanpa langsung rerun
     if st.session_state.get("selected_school") != nearest_school:
-        # Pakai session_state temp dan rerun di luar loop map
-        st.session_state["selected_school_temp"] = nearest_school
-        st.session_state["zoom_center_temp"] = nearest_latlon
-        st.experimental_rerun()
-        
-# Setelah rerun, commit temp ke main session_state
-if st.session_state.get("selected_school_temp"):
-    st.session_state["selected_school"] = st.session_state.pop("selected_school_temp")
-    st.session_state["zoom_center"] = st.session_state.pop("zoom_center_temp")
+        st.session_state["selected_school"] = nearest_school
+        st.session_state["zoom_center"] = nearest_latlon
 
 # ================= PANEL ULASAN =================
 with col2:
     st.subheader("Panel Sekolah & Ulasan")
     st.markdown(f"**Sekolah terpilih:** {st.session_state['selected_school']}")
-
-    if "last_comment_time" not in st.session_state:
-        st.session_state["last_comment_time"] = 0
 
     opini = st.text_area("Tulis opini / ulasan")
 
@@ -238,14 +230,6 @@ with col2:
             if found or vader < 0:
                 st.warning("Kalimat negatif terdeteksi. Saran: " + corrected)
 
-    if st.button("Tampilkan Ulasan Terbaru"):
-        df_sel = fb[fb["sekolah"] == st.session_state["selected_school"]]
-        if df_sel.empty:
-            st.info("Belum ada ulasan.")
-        else:
-            for _, r in df_sel.iterrows():
-                st.write(f"• {r['opini']} (Pos: {r['pos_pct']:.1f}%)")
-
     st.markdown("---")
     st.subheader("📥 Export CSV")
     df_export = fb[fb["sekolah"] == st.session_state["selected_school"]]
@@ -257,4 +241,3 @@ with col2:
 
     st.markdown("---")
     st.write("gusti mandala")
-
