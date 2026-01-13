@@ -165,10 +165,18 @@ if map_data and map_data.get("last_object_clicked"):
     tmp["dist"] = tmp.apply(lambda r: haversine(latc, lonc, r["lat"], r["lon"]), axis=1)
     nearest = tmp.sort_values("dist").iloc[0]
 
+    # Hanya update session_state_temp
     if st.session_state.get("selected_school") != nearest["nama"]:
         st.session_state["selected_school_temp"] = nearest["nama"]
         st.session_state["zoom_center_temp"] = [nearest["lat"], nearest["lon"]]
-        st.experimental_rerun()
+
+# Commit temp → main session_state (di luar map/loop)
+if st.session_state.get("selected_school_temp"):
+    st.session_state["selected_school"] = st.session_state.pop("selected_school_temp")
+    st.session_state["zoom_center"] = st.session_state.pop("zoom_center_temp")
+    # Rerun **hanya sekali di luar loop**
+    st.experimental_rerun()
+
 
 # Commit temp session_state
 if st.session_state.get("selected_school_temp"):
@@ -253,3 +261,4 @@ with col2:
 
     st.markdown("---")
     st.write("gusti mandala")
+
