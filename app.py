@@ -194,13 +194,24 @@ if map_data and map_data.get("last_object_clicked"):
     latc = map_data["last_object_clicked"]["lat"]
     lonc = map_data["last_object_clicked"]["lng"]
 
+    # Cari sekolah terdekat
     tmp = sekolah_df.copy()
     tmp["dist"] = tmp.apply(lambda r: haversine(latc, lonc, r["lat"], r["lon"]), axis=1)
     nearest = tmp.sort_values("dist").iloc[0]
+    nearest_school = nearest["nama"]
+    nearest_latlon = [nearest["lat"], nearest["lon"]]
 
-    st.session_state["selected_school"] = nearest["nama"]
-    st.session_state["zoom_center"] = [nearest["lat"], nearest["lon"]]
-    st.experimental_rerun()
+    # Hanya update session_state jika berbeda
+    if st.session_state.get("selected_school") != nearest_school:
+        # Pakai session_state temp dan rerun di luar loop map
+        st.session_state["selected_school_temp"] = nearest_school
+        st.session_state["zoom_center_temp"] = nearest_latlon
+        st.experimental_rerun()
+        
+# Setelah rerun, commit temp ke main session_state
+if st.session_state.get("selected_school_temp"):
+    st.session_state["selected_school"] = st.session_state.pop("selected_school_temp")
+    st.session_state["zoom_center"] = st.session_state.pop("zoom_center_temp")
 
 # ================= PANEL ULASAN =================
 with col2:
@@ -246,3 +257,4 @@ with col2:
 
     st.markdown("---")
     st.write("gusti mandala")
+
