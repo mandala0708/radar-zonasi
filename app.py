@@ -70,7 +70,7 @@ def haversine(lat1, lon1, lat2, lon2):
     return R * (2 * atan2(sqrt(a), sqrt(1-a)))
 
 # ================= UI =================
-st.title("Radar Zonasi Sekolah mandala — Analisis Sentimen")
+st.title("Radar Zonasi Sekolah Mandala — Analisis Sentimen")
 
 sekolah_df = load_sekolah_df()
 fb = load_feedback_df()
@@ -79,28 +79,14 @@ fb = load_feedback_df()
 col1, col2 = st.columns([2,1])
 
 with col1:
-    if st.session_state["zoom_center"]:
-        center = st.session_state["zoom_center"]
-        zoom = 15
-    else:
-        center = [user_lat, user_lon] if gps_ready else [-6.2, 106.8]
-        zoom = 12
+    center = st.session_state["zoom_center"] or ([user_lat, user_lon] if gps_ready else [-6.2, 106.8])
+    zoom = 15 if st.session_state["zoom_center"] else 12
 
     m = folium.Map(location=center, zoom_start=zoom)
 
-    # 🔥 FOLIUM PLUGINS: FULLSCREEN & MEASURE & LAYER CONTROL
-    Fullscreen(
-        position="topright",
-        title="Fullscreen",
-        title_cancel="Exit Fullscreen",
-        force_separate_button=True
-    ).add_to(m)
-
-    MeasureControl(
-        position="bottomleft",
-        primary_length_unit="meters"
-    ).add_to(m)
-
+    # Plugins
+    Fullscreen(position="topright", title="Fullscreen", title_cancel="Exit Fullscreen", force_separate_button=True).add_to(m)
+    MeasureControl(position="bottomleft", primary_length_unit="meters").add_to(m)
     folium.LayerControl(position="topright").add_to(m)
 
     stats = {}
@@ -110,11 +96,7 @@ with col1:
             stats[r["sekolah"]] = r
 
     if gps_ready:
-        folium.Marker(
-            [user_lat, user_lon],
-            tooltip="📍 Lokasi Anda",
-            icon=folium.Icon(color="blue", icon="user")
-        ).add_to(m)
+        folium.Marker([user_lat, user_lon], tooltip="📍 Lokasi Anda", icon=folium.Icon(color="blue", icon="user")).add_to(m)
 
     for _, r in sekolah_df.iterrows():
         if gps_ready and st.session_state.get("radius_on", True):
@@ -150,6 +132,7 @@ with col1:
             fill_opacity=0.08
         ).add_to(m)
 
+    # Render map
     map_data = st_folium(m, width=700, height=600)
     st.session_state["map_data"] = map_data
 
@@ -162,10 +145,10 @@ if map_data and map_data.get("last_object_clicked"):
     tmp["dist"] = tmp.apply(lambda r: haversine(latc, lonc, r["lat"], r["lon"]), axis=1)
     nearest = tmp.sort_values("dist").iloc[0]
 
+    # Trigger hanya sekali
     if st.session_state["selected_school"] != nearest["nama"]:
         st.session_state["selected_school"] = nearest["nama"]
         st.session_state["zoom_center"] = [nearest["lat"], nearest["lon"]]
-        st.rerun()
 
 # ================= SIDEBAR =================
 with st.sidebar:
@@ -182,13 +165,12 @@ with st.sidebar:
         key="selected_school"
     )
 
-    # 🔥 AUTO ZOOM SAAT PILIH DARI SEARCH / SELECTBOX
+    # Auto-zoom
     row = sekolah_df[sekolah_df["nama"] == selected_school]
     if not row.empty:
         lat, lon = float(row.iloc[0]["lat"]), float(row.iloc[0]["lon"])
         if st.session_state["zoom_center"] != [lat, lon]:
             st.session_state["zoom_center"] = [lat, lon]
-            st.rerun()
 
     st.markdown("### 📡 Status GPS")
     if gps_ready:
@@ -196,14 +178,9 @@ with st.sidebar:
     else:
         st.warning("🔴 GPS TIDAK AKTIF")
 
-    # ---------- RADIUS ZONASI DI BAWAH GPS ----------
     st.subheader("Radius Zonasi")
     st.session_state["radius_on"] = st.toggle("Aktifkan Radius", value=True)
-    st.session_state["radius"] = st.slider(
-        "Radius (meter)",
-        100, 10000, 1000, 100,
-        disabled=not st.session_state["radius_on"]
-    )
+    st.session_state["radius"] = st.slider("Radius (meter)", 100, 10000, 1000, 100, disabled=not st.session_state["radius_on"])
 
 # ================= PANEL ULASAN =================
 with col2:
@@ -240,10 +217,13 @@ with col2:
 
     st.markdown("---")
     st.subheader("📥 Export CSV")
-    if st.button("Download CSV Ulasan"):
-        csv = fb.to_csv(index=False).encode("utf-8")
-        st.download_button("⬇️ Download CSV", csv, "ulasan_sekolah.csv", "text/csv")
+    if st.button("Download CSV Ulasan Sekolah Terpilih"):
+        df_sel = fb[fb["sekolah"] == selected_school]
+        if df_sel.empty:
+            st.warning("Belum ada ulasan untuk sekolah ini.")
+        else:
+            csv = df_sel.to_csv(index=False).encode("utf-8")
+            st.download_button("⬇️ Download CSV", csv, f"ulasan_{selected_school}.csv", "text/csv")
 
     st.markdown("---")
     st.write("gusti mandala")
-
