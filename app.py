@@ -32,14 +32,9 @@ div.stButton>button:hover{background:#45a049}
 
 # ================== GPS OTOMATIS ==================
 geo = get_geolocation()
-if geo:
-    user_lat = geo["coords"]["latitude"]
-    user_lon = geo["coords"]["longitude"]
-    gps_ready = True
-else:
-    user_lat = -6.2
-    user_lon = 106.8
-    gps_ready = False
+user_lat = geo["coords"]["latitude"] if geo else -6.2
+user_lon = geo["coords"]["longitude"] if geo else 106.8
+gps_ready = geo is not None
 # ==================================================
 
 # ---------- Setup ----------
@@ -54,14 +49,10 @@ if "db_initialized" not in st.session_state:
 
 if "map_data" not in st.session_state:
     st.session_state["map_data"] = None
-
 if "selected_school" not in st.session_state:
     st.session_state["selected_school"] = None
-
 if "zoom_center" not in st.session_state:
     st.session_state["zoom_center"] = None
-
-# Default radius
 if "radius_on" not in st.session_state:
     st.session_state["radius_on"] = True
 if "radius" not in st.session_state:
@@ -77,24 +68,16 @@ def haversine(lat1, lon1, lat2, lon2):
 
 # ================= UI =================
 st.title("📍 Radar Zonasi Sekolah — Analisis Sentimen")
-
 sekolah_df = load_sekolah_df()
 fb = load_feedback_df()
-
-# ================= MAP =================
 col1, col2 = st.columns([2,1])
 
+# ================= MAP =================
 with col1:
-    if st.session_state["zoom_center"]:
-        center = st.session_state["zoom_center"]
-        zoom = 15
-    else:
-        center = [user_lat, user_lon] if gps_ready else [-6.2, 106.8]
-        zoom = 12
-
+    center = st.session_state["zoom_center"] or ([user_lat, user_lon] if gps_ready else [-6.2, 106.8])
+    zoom = 15 if st.session_state["zoom_center"] else 12
     m = folium.Map(location=center, zoom_start=zoom)
 
-    # Folium plugins
     Fullscreen(position="topright", title="Fullscreen", title_cancel="Exit Fullscreen", force_separate_button=True).add_to(m)
     MeasureControl(position="bottomleft", primary_length_unit="meters").add_to(m)
     folium.LayerControl(position="topright").add_to(m)
@@ -112,15 +95,10 @@ with col1:
 
     # Marker sekolah
     nearest_distance = None
-    nearest_school_name = None
     for _, r in sekolah_df.iterrows():
-        # Filter radius
-        if gps_ready and st.session_state["radius_on"]:
-            dist = haversine(user_lat, user_lon, r["lat"], r["lon"])
-            if dist > st.session_state["radius"]:
-                continue
-        else:
-            dist = None
+        dist = haversine(user_lat, user_lon, r["lat"], r["lon"]) if gps_ready and st.session_state["radius_on"] else None
+        if dist and dist > st.session_state["radius"]:
+            continue
 
         nama = r["nama"]
         if nama in stats:
@@ -132,11 +110,11 @@ with col1:
             popup = f"<b>{nama}</b><br>Belum ada ulasan"
             color = "gray"
 
-        highlight = False
-        if dist is not None and (nearest_distance is None or dist < nearest_distance):
+        highlight = dist is not None and (nearest_distance is None or dist < nearest_distance)
+        if highlight:
             nearest_distance = dist
-            nearest_school_name = nama
-            highlight = True
+            st.session_state["selected_school_temp"] = nama
+            st.session_state["zoom_center_temp"] = [r["lat"], r["lon"]]
 
         folium.CircleMarker(
             [r["lat"], r["lon"]],
@@ -152,29 +130,7 @@ with col1:
     if gps_ready and st.session_state["radius_on"]:
         folium.Circle([user_lat, user_lon], radius=st.session_state["radius"], color="blue", fill=True, fill_opacity=0.08).add_to(m)
 
-    # Render map
-    map_data = st_folium(m, width=700, height=600)
-    st.session_state["map_data"] = map_data
-
-# ================= MAP → SELECTBOX SYNC =================
-if map_data and map_data.get("last_object_clicked"):
-    latc = map_data["last_object_clicked"]["lat"]
-    lonc = map_data["last_object_clicked"]["lng"]
-
-    tmp = sekolah_df.copy()
-    tmp["dist"] = tmp.apply(lambda r: haversine(latc, lonc, r["lat"], r["lon"]), axis=1)
-    nearest = tmp.sort_values("dist").iloc[0]
-
-    # Simpan di temp session_state
-    if st.session_state.get("selected_school") != nearest["nama"]:
-        st.session_state["selected_school_temp"] = nearest["nama"]
-        st.session_state["zoom_center_temp"] = [nearest["lat"], nearest["lon"]]
-
-# Commit temp → main session_state **sekali saja**
-if st.session_state.get("selected_school_temp") and st.session_state.get("zoom_center_temp"):
-    st.session_state["selected_school"] = st.session_state.pop("selected_school_temp")
-    st.session_state["zoom_center"] = st.session_state.pop("zoom_center_temp")
-    st.experimental_rerun()  # Hanya sekali
+    st.session_state["map_data"] = st_folium(m, width=700, height=600)
 
 # ================= SIDEBAR =================
 with st.sidebar:
@@ -194,18 +150,14 @@ with st.sidebar:
     row = sekolah_df[sekolah_df["nama"] == selected_school]
     if not row.empty:
         lat, lon = float(row.iloc[0]["lat"]), float(row.iloc[0]["lon"])
-        if st.session_state["zoom_center"] != [lat, lon]:
-            st.session_state["zoom_center"] = [lat, lon]
-            st.experimental_rerun()
+        st.session_state["zoom_center"] = [lat, lon]
 
-    # GPS status
     st.markdown("### 📡 Status GPS")
     if gps_ready:
         st.success(f"🟢 GPS AKTIF\nLat: {user_lat:.6f}\nLon: {user_lon:.6f}")
     else:
         st.warning("🔴 GPS TIDAK AKTIF")
 
-    # Radius Zonasi
     st.subheader("Radius Zonasi")
     st.session_state["radius_on"] = st.toggle("Aktifkan Radius", value=True)
     st.session_state["radius"] = st.slider("Radius (meter)", 100, 10000, 1000, 100, disabled=not st.session_state["radius_on"])
@@ -213,6 +165,7 @@ with st.sidebar:
 # ================= PANEL ULASAN =================
 with col2:
     st.subheader("Panel Sekolah & Ulasan")
+    selected_school = st.session_state["selected_school_temp"] or st.session_state["selected_school"]
     st.markdown(f"**Sekolah terpilih:** {selected_school}")
 
     if "last_comment_time" not in st.session_state:
