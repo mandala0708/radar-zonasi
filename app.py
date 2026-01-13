@@ -205,7 +205,7 @@ with col2:
             st.session_state["last_comment_time"] = time.time()
             st.success("Opini tersimpan.")
             if found or vader < 0:
-                st.warning("Kalimat negatif terdeteksi. Saran: " + corrected)
+                st.warning("Kalimat negatif terdeteksi. : " + corrected)
 
     if st.button("Tampilkan Ulasan Terbaru"):
         df_sel = fb[fb["sekolah"] == selected_school]
@@ -227,3 +227,4 @@ with col2:
 
     st.markdown("---")
     st.write("gusti mandala")
+
