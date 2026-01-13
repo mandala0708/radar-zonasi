@@ -32,7 +32,7 @@ div.stButton>button:hover{background:#45a049}
 
 # ================== GPS OTOMATIS ==================
 geo = get_geolocation()
-if geo:
+if geo and "coords" in geo and "latitude" in geo["coords"] and "longitude" in geo["coords"]:
     user_lat = geo["coords"]["latitude"]
     user_lon = geo["coords"]["longitude"]
     gps_ready = True
@@ -40,6 +40,7 @@ else:
     user_lat = 0.0
     user_lon = 0.0
     gps_ready = False
+
 # ==================================================
 
 # ---------- Setup ----------
@@ -227,4 +228,5 @@ with col2:
 
     st.markdown("---")
     st.write("gusti mandala")
+
 
