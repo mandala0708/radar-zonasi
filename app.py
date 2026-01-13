@@ -223,6 +223,12 @@ with col2:
             found, corrected = correct_negative_sentence(opini)
             sid = get_sekolah_id_by_nama(selected_school)
             save_feedback(sid, opini, pos, vader)
+            
+            # ================= UPDATE DATAFRAME fb =================
+            new_row = {"id": len(fb)+1, "sekolah": selected_school, "opini": opini, "pos_pct": pos}
+            fb = pd.concat([fb, pd.DataFrame([new_row])], ignore_index=True)
+            # =========================================================
+
             st.session_state["last_comment_time"] = time.time()
             st.success("Opini tersimpan.")
             if found or vader < 0:
